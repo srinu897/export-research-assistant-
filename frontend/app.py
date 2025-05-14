@@ -27,18 +27,29 @@ if uploaded_file:
 
 # Main chat interface for users
 st.header("Ask Your Question")
-user_query = st.text_input("Enter your query about export data (e.g., 'Which countries import honey?')")
 
-if user_query:
-    try:
-        # Send the query to backend
+# Show the first question (if the product is not yet selected)
+if not st.session_state.get("product_selected", False):
+    st.write("Welcome! Please tell us which product you are interested in.")
+    user_query = st.text_input("Enter your product query (e.g., 'I export Honey')")
+
+    if user_query:
+        st.session_state.product_selected = True
+        # Send the selected product to backend
+        query_data = {"query": user_query}
+        response = requests.post("http://localhost:5000/query", json=query_data)
+        st.write(f"**Assistant:** {response.json().get('question')}")
+else:
+    user_query = st.text_input("Enter your query (e.g., 'buyer countries' or 'export trends')")
+
+    if user_query:
+        # Send the user query to backend
         query_data = {"query": user_query}
         response = requests.post("http://localhost:5000/query", json=query_data)
         
         if response.status_code == 200:
-            answer = response.json().get("answer")
-            st.write(f"**Answer:** {answer}")
+            assistant_response = response.json()
+            st.write(f"**Assistant:** {assistant_response.get('answer')}")
+            st.write(f"**Assistant Next:** {assistant_response.get('next_question')}")
         else:
             st.write("Sorry, couldn't process your query. Please try again later.")
-    except requests.exceptions.RequestException as e:
-        st.write(f"Error connecting to backend: {e}")
