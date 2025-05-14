@@ -1,18 +1,19 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from utils import extract_text_from_pdf, create_faiss_index, handle_user_query
+from utils import extract_text_from_pdf, create_faiss_index, handle_user_query, get_top_buyers, get_export_trends
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
 # Initialize global variables
 reports = []
 index = None
 vectorizer = None
+conversation_context = {}
 
 @app.route("/upload", methods=["POST"])
 def upload_file():
-    print("Upload route hit")  # Debugging log
+    print("Upload route hit")
     global reports, index, vectorizer
     try:
         file = request.files.get("file")
@@ -34,21 +35,43 @@ def upload_file():
 
 @app.route("/query", methods=["POST"])
 def query():
-    print("Query route hit")  # Debugging log
+    print("Query route hit")
     data = request.json
     user_query = data.get("query")
     
     if not user_query:
         return jsonify({"error": "Query missing"}), 400
+
+    # Check if the query matches a known step
+    if "product" not in conversation_context:
+        conversation_context["product"] = user_query
+        return jsonify({
+            "question": "Great! Now, are you looking for buyer countries or export trends for this product?",
+            "next_step": "buyer_or_trends"
+        })
     
-    try:
-        response = handle_user_query(user_query, reports, index, vectorizer)
-        if not response:
-            return jsonify({"answer": "Sorry, I couldn't find an answer to your query."}), 200
-        return jsonify({"answer": response}), 200
-    except Exception as e:
-        print(f"Error handling query: {e}")
-        return jsonify({"error": "Internal Server Error"}), 500
+    if "next_step" not in conversation_context:
+        conversation_context["next_step"] = user_query
+        if user_query.lower() in ["buyer countries", "buyers"]:
+            return jsonify({
+                "answer": get_top_buyers(conversation_context["product"]),
+                "next_question": "Would you like more details or trends?"
+            })
+        elif user_query.lower() in ["export trends", "trends"]:
+            return jsonify({
+                "answer": get_export_trends(conversation_context["product"]),
+                "next_question": "Would you like more details or top buyer countries?"
+            })
+        else:
+            return jsonify({
+                "answer": "Sorry, I didn't quite understand. Please choose 'buyer countries' or 'export trends'.",
+                "next_question": "Please choose one: buyer countries or export trends?"
+            })
+    
+    # Process queries dynamically based on steps
+    response = handle_user_query(user_query, reports, index, vectorizer)
+    return jsonify({"answer": response})
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
